@@ -31,7 +31,7 @@ class RetinaFace(ModelProcessor):
             refer available model_source option <>].
             Defaults to {
                 source: gdrive,
-                id: 1K3Eq2k1b9dpKkucZjPAiCCnNzfCMosK4,
+                id: 1ALrrsY54fAdnmB4Zgp7yXw1-xjekiiMO,
                 filename: retinaface.h5
             }
             threshold (float): face detection confidence threshold, Defaults to 0.9
@@ -40,7 +40,7 @@ class RetinaFace(ModelProcessor):
         if model_path is None and model_source is None:
             model_source = {
                 "source": "gdrive",
-                "id": "1K3Eq2k1b9dpKkucZjPAiCCnNzfCMosK4",
+                "id": "1ALrrsY54fAdnmB4Zgp7yXw1-xjekiiMO",
                 "filename": "retinaface.h5",
             }
         super().__init__(model_path, model_source, *args, **kwargs)
