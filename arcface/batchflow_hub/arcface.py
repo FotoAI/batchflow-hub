@@ -10,7 +10,7 @@ from batchflow.decorators import log_time
 from .common import postprocess
 
 
-class ArcFaceProcessor(ModelProcessor):
+class ArcFace(ModelProcessor):
     def __init__(
         self,
         model_path: str = None,
@@ -155,15 +155,19 @@ class ArcFaceProcessor(ModelProcessor):
         """
         face_crops = []
         for det in detections:
-            x1, y1, x2, y2, conf = det["face"]
-            landmarks = det["landmarks"]
+            x1, y1, x2, y2 = det["face"][:4]
+            
             face_crop = image.copy()[y1:y2, x1:x2]
-            face_crop = postprocess.alignment_procedure(
-                face_crop,
-                landmarks["right_eye"],
-                landmarks["left_eye"],
-                landmarks["nose"],
-            )
+            if self.alignface:
+                landmarks = det.get("landmarks",None)
+                if landmarks is None:
+                    raise ("Pass landmarks in detection or pass alignment=False in init")
+                face_crop = postprocess.alignment_procedure(
+                    face_crop,
+                    landmarks["right_eye"],
+                    landmarks["left_eye"],
+                    landmarks["nose"],
+                )
 
             if face_crop.shape[0] > 0 and face_crop.shape[1] > 0:
                 factor_0 = self.target_size[0] / face_crop.shape[0]
