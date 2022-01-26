@@ -1,8 +1,8 @@
-from batchflow_hub.retina_face import RetinaFaceDetector
+from batchflow_hub.retina_face import RetinaFace
 import cv2
 
 im = cv2.imread("imgs/img1.jpg")
-fd = RetinaFaceDetector()
+fd = RetinaFace()
 fd.open()
 o = fd.process({"image":im})
 

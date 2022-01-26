@@ -10,7 +10,7 @@ from .common import preprocess, postprocess
 from batchflow.decorators import log_time
 
 
-class RetinaFaceDetector(ModelProcessor):
+class RetinaFace(ModelProcessor):
     def __init__(self, model_path: str = None, model_source: Dict[str, str] = None,threshold:float_repr_style=0.9, *args, **kwargs) -> None:
         """
         Initalise RetinaFace Detector 
