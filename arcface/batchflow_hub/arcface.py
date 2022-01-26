@@ -1,13 +1,13 @@
 from typing import Dict, Tuple, Union
 from batchflow.processors.core import ModelProcessor
-from .model import build_model
+from .arcface_lib.model import build_model
 import tensorflow as tf
 import keras
 from typing import List, Any
 import numpy as np
 import cv2
 from batchflow.decorators import log_time
-from .common import postprocess
+from .arcface_lib.common import postprocess
 
 
 class ArcFace(ModelProcessor):
@@ -17,7 +17,6 @@ class ArcFace(ModelProcessor):
         model_source: Dict[str, str] = None,
         target_size=(112, 112),
         grayscale=False,
-        alignface=True,
         *args,
         **kwargs,
     ) -> None:
@@ -33,7 +32,6 @@ class ArcFace(ModelProcessor):
         )
         self.target_size = target_size
         self.grayscale = grayscale
-        self.alignface = alignface
 
     def open(self):
         self.model: keras.Model = build_model()
@@ -58,16 +56,16 @@ class ArcFace(ModelProcessor):
     def process(self, ctx: Dict[str, Any]):
         """
         ctx signature:
-            image (np.asarray): image in RGB format
+            face_crops (List[np.asarray]): List of faces in RGB format
             filename (str):  image filename
             image_id (str, optional): unique image id
             detections (List[Dict[str, List[Any]]]): face_detection of the format
                         {"face":[x1,y1,x2,y2], "landmarks": {"right_eye":[x,y], "left_eye":[x,y], "nose":[x,y]}}
         """
-        image: np.asarray = ctx.get("image")
+        face_crops: np.asarray = ctx.get("face_crops")
         detections: List[Union[List, Tuple]] = ctx.get("detections")
 
-        preprocess_images: List[np.asarray] = self.preprocess(image, detections)
+        preprocess_images: List[np.asarray] = self.preprocess(face_crops, detections)
         encodings: List[np.asarray] = []
         for preprocess_image in preprocess_images:
             output = self.predict(preprocess_image)
@@ -77,23 +75,22 @@ class ArcFace(ModelProcessor):
     def process_batch(self, ctx: Dict[str, Any]) -> Any:
         """
         ctx signature:
-            image (List[np.asarray]): batch of image in RGB format
+            face_crops (List[List[np.asarray]]): List of List of faces in RGB format
             filename (List[str]):  image filename
             image_id (List[str], optional): unique image id
             detections (List[List[Dict[str, List[Any]]]]): Listface_detection of the format
                         {"face":[x1,y1,x2,y2], "landmarks": {"right_eye":[x,y], "left_eye":[x,y], "nose":[x,y]}}
         """
-        images: List[np.asarray] = ctx.get("image")
-        image_ids: List[List[Union[str, int]]] = ctx.get("image_id")
+        face_crops: np.asarray = ctx.get("face_crops")
         detections: List[List[Union[List, Tuple]]] = ctx.get("detections")
 
         preprocessed_images = []
         indexes = []
 
         # make preprocessed images flat
-        for i, (image, det) in enumerate(zip(images, detections)):
+        for i, (crops, det) in enumerate(zip(face_crops, detections)):
             indexes.extend([i] * len(det))
-            preprocessed_images.extend(self.preprocess(image, det))
+            preprocessed_images.extend(self.preprocess(crops, det))
 
         # batch the preprocessed image
         batches = []
@@ -135,40 +132,23 @@ class ArcFace(ModelProcessor):
 
     def preprocess(
         self,
-        image: np.asarray,
-        detections: List[Union[List, Tuple]],
+        face_crops: List[np.asarray],
         normalization: str = "base",
     ) -> List[np.asarray]:
         """
-        Preporcess input image
-        Crop the faces from the image
+        Preprocess input face image
         Resize the face
         Normalize the face
 
         Args:
-            image (np.asarray): [image]
-            detections (List[Union[List, Tuple]]): [face detection of format [x1,y1,x2,y2]]
+            face_crops (List[np.asarray]): List of face crop
             normalization (str, optional): [image noramlization options (base, arcface)]. Defaults to "base".
 
         Returns:
             List[np.asarray]: [preprocessed face crops]
         """
-        face_crops = []
-        for det in detections:
-            x1, y1, x2, y2 = det["face"][:4]
-            
-            face_crop = image.copy()[y1:y2, x1:x2]
-            if self.alignface:
-                landmarks = det.get("landmarks",None)
-                if landmarks is None:
-                    raise ("Pass landmarks in detection or pass alignment=False in init")
-                face_crop = postprocess.alignment_procedure(
-                    face_crop,
-                    landmarks["right_eye"],
-                    landmarks["left_eye"],
-                    landmarks["nose"],
-                )
-
+        preprocessed_face_crops = []
+        for face_crop in face_crops:
             if face_crop.shape[0] > 0 and face_crop.shape[1] > 0:
                 factor_0 = self.target_size[0] / face_crop.shape[0]
                 factor_1 = self.target_size[1] / face_crop.shape[1]
@@ -212,11 +192,12 @@ class ArcFace(ModelProcessor):
 
             if normalization == "base":
                 # normalize [0,1]
+                face_crop = face_crop.astype("float")
                 face_crop /= 255
             elif normalization == "arcface":
                 # take from deepface normalization
                 face_crop -= 127.5
                 face_crop /= 128
-            face_crops.append(face_crop)
+            preprocessed_face_crops.append(face_crop)
 
-        return face_crops
+        return preprocessed_face_crops
