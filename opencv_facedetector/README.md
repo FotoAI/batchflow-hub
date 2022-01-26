@@ -1,7 +1,7 @@
-# RetinaFace 
+# OpenCV HaarCascade Face Detector 
 
 ### Face Detector 
-code inspired from deepface retinaface
+code inspired from deepface
 
 
 ## Installation
@@ -9,26 +9,26 @@ code inspired from deepface retinaface
 1. Cloning repo
 ```
 git clone https://github.com/FotoAI/batchflow-hub.git
-cd retinaface
+cd opencv_facedetector
 pip install .
 ```
 
 2. Uing pip+https
 ```
-pip install git+https://github.com/FotoAI/batchflow-hub.git#subdirectory=retinaface
+pip install git+https://github.com/FotoAI/batchflow-hub.git#subdirectory=opencv_facedetector
 ```
 
 ## How to Use
 
 ```
-from batchflow_hub.retinaface import RetinaFace
+from batchflow_hub.opencv_facedetector import OpenCVFaceDetector
 import cv2
 
 # create model instance
-retinaface_detector = RetinaFace()
+detector = OpenCVFaceDetector()
 
-# load model in memory
-retinaface_detector.open()
+# intantiate opencv objects
+detector.open()
 
 # test image
 img = cv2.imread("path to your image")
@@ -39,7 +39,7 @@ img = img[...,::-1]
 ctx={"image":img}
 
 # process image
-output = retinaface_detector.process(ctx)
+output = detector.process(ctx)
 
 # output signature
 print(output)
@@ -52,7 +52,8 @@ print(output)
                 "nose": [x,y],
                 "mouth_right": [x,y],
                 "mouth_left" : [x,y]
-        }]
+        }],
+    "face_crops":[np.array(),..]
     }
 
 ```

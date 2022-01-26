@@ -1,16 +1,6 @@
 from os import major
 from setuptools import setup
 from setuptools import find_packages
-import os.path
-
-try:
-    import tensorflow as tf
-    version = tf.__version__
-    version, major_version, minor_version = version.split(".")
-    if int(version) <= 1 and (int(major) < 9):
-        raise Exception("Install tensorflow >1.9.0 cpu or gpu as per your system")
-except:
-    raise Exception("Install tensorflow >1.9.0 cpu or gpu as per your system")
 
 name = "batchflow_opencv_facedetector"
 install_requires = [
