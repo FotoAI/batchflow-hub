@@ -73,7 +73,6 @@ class RetinaFace(ModelProcessor):
     def close(self):
         self.model = None
 
-    @log_time
     def predict(self, image: np.asarray) -> tf.Tensor:
         """Detect faces in the image
 
@@ -90,6 +89,7 @@ class RetinaFace(ModelProcessor):
 
         return self.model(image_tensor)
 
+    @log_time
     def process(self, ctx: Dict[str, Any]) -> Any:
         """Detects face in the image
 
@@ -100,11 +100,12 @@ class RetinaFace(ModelProcessor):
             Any: ctx after adding output of this node
         """
         image: np.asarray = ctx.get("image")
-        image, im_info, im_scale, im_pad = self.preprocess(image, pad=False)
-        output = self.predict(image)
-        detections, face_crops = self.postprocess(np.squeeze(image), output, im_info, im_scale, im_pad)
+        pre_image, im_info, im_scale, im_pad = self.preprocess(image, pad=False)
+        output = self.predict(pre_image)
+        detections, face_crops = self.postprocess(image, output, im_info, im_scale, im_pad)
         return {"detections": detections, "face_crops": face_crops, **ctx}
 
+    @log_time
     def process_batch(self, ctx: Dict[str, Any]) -> Any:
         images: List[np.asarray] = ctx.get("image")
         batches = []
@@ -128,7 +129,7 @@ class RetinaFace(ModelProcessor):
             meta = []
             for image in batch:
                 pre_image, im_info, im_scale, im_pad = self.preprocess(
-                    image, pad=False
+                    image, pad=True
                 )
                 pre_image_batch.append(pre_image)
                 meta.append([im_info,im_scale, im_pad])
@@ -213,12 +214,13 @@ class RetinaFace(ModelProcessor):
             proposals = proposals[order, :]
             scores = scores[order]
 
-            proposals[:, 0:4] /= im_scale
+            
             if im_pad is not None:
                 proposals[:, 0] -= im_pad[2] # x1 - pad-left
                 proposals[:, 2] -= im_pad[2] # x2 - pad-left
                 proposals[:, 1] -= im_pad[0]  # y1 - pad-top
                 proposals[:, 3] -= im_pad[0]  # y1 - pad-top
+            proposals[:, 0:4] /= im_scale
 
             proposals_list.append(proposals)
             scores_list.append(scores)
@@ -229,18 +231,23 @@ class RetinaFace(ModelProcessor):
             landmarks = postprocess.landmark_pred(anchors, landmark_deltas)
             landmarks = landmarks[order, :]
 
-            landmarks[:, :, 0:2] /= im_scale
+            
             if im_pad is not None:
                 landmarks[:, :, 0] -= im_pad[2] # x - pad-left
                 landmarks[:, :, 1] -= im_pad[0] # y - pad-top
+            landmarks[:, :, 0:2] /= im_scale
 
             landmarks_list.append(landmarks)
             sym_idx += 3
 
         proposals = np.vstack(proposals_list)
         if proposals.shape[0] == 0:
-            landmarks = np.zeros((0, 5, 2))
-            return np.zeros((0, 5)), landmarks
+            detections = []
+            face_crops = []
+            if self.no_detection == "face":
+                detections.append({"face":[0,0,image.shape[1],image.shape[0]]})
+                face_crops.append(image)
+            return detections, face_crops
         scores = np.vstack(scores_list)
         scores_ravel = scores.ravel()
         order = scores_ravel.argsort()[::-1]
@@ -276,21 +283,31 @@ class RetinaFace(ModelProcessor):
             det["landmarks"]["nose"] = list(landmarks[idx][2])
             det["landmarks"]["mouth_right"] = list(landmarks[idx][3])
             det["landmarks"]["mouth_left"] = list(landmarks[idx][4])
-            detections.append(det)
+
+            
 
             x1, y1, x2, y2 = det["face"][:4]
-            face_crop = image.copy()[y1:y2, x1:x2]
-            if self.alignface:
-                landmarks = det.get("landmarks", None)
-                if landmarks is None:
-                    raise (
-                        "Pass landmarks in detection or pass alignment=False in init"
+
+            # add 5% margin
+            m_x, m_y = int((0.08 * (x2-x1))//2) , int((0.1 * (y2-y1))//2)
+            x1,y1,x2,y2 = x1-m_x, y1-m_y, x2 + m_x, y2+m_y 
+
+            x1,y1 = max(0,x1), max(0,y1)
+            if (x2-x1)*(y2-y1)!=0:
+                face_crop = image.copy()[y1:y2, x1:x2]
+                if self.alignface:
+                    _landmarks = det.get("landmarks", None)
+                    if _landmarks is None:
+                        raise (
+                            "Pass landmarks in detection or pass alignment=False in init"
+                        )
+                    face_crop = postprocess.alignment_procedure(
+                        face_crop,
+                        _landmarks["right_eye"],
+                        _landmarks["left_eye"],
+                        _landmarks["nose"],
                     )
-                face_crop = postprocess.alignment_procedure(
-                    face_crop,
-                    landmarks["right_eye"],
-                    landmarks["left_eye"],
-                    landmarks["nose"],
-                )
+
+                detections.append(det)
                 face_crops.append(face_crop)
         return detections, face_crops
