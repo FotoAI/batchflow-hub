@@ -63,9 +63,8 @@ class ArcFace(ModelProcessor):
                         {"face":[x1,y1,x2,y2], "landmarks": {"right_eye":[x,y], "left_eye":[x,y], "nose":[x,y]}}
         """
         face_crops: np.asarray = ctx.get("face_crops")
-        detections: List[Union[List, Tuple]] = ctx.get("detections")
 
-        preprocess_images: List[np.asarray] = self.preprocess(face_crops, detections)
+        preprocess_images: List[np.asarray] = self.preprocess(face_crops)
         encodings: List[np.asarray] = []
         for preprocess_image in preprocess_images:
             output = self.predict(preprocess_image)
@@ -90,7 +89,7 @@ class ArcFace(ModelProcessor):
         # make preprocessed images flat
         for i, (crops, det) in enumerate(zip(face_crops, detections)):
             indexes.extend([i] * len(det))
-            preprocessed_images.extend(self.preprocess(crops, det))
+            preprocessed_images.extend(self.preprocess(crops))
 
         # batch the preprocessed image
         batches = []
@@ -115,19 +114,11 @@ class ArcFace(ModelProcessor):
             encodings_flat.extend(output)
 
         encodings = []
-        if len(indexes) > 0:
-            last_index = indexes[0]
-            e = [encodings_flat[last_index]]
-            for i in indexes[1:]:
-                if last_index == i:
-                    e.append([encodings_flat[i]])
-                else:
-                    encodings.append(e)
-                    e = [encodings_flat[i]]
-                last_index = i
-            # add last image encoding
-            encodings.append(e)
-            e = []
+        # create empty lists
+        for i in np.unique(indexes):
+            encodings.append([])
+        for idx,enc in zip(indexes,encodings_flat):
+            encodings[idx].append(enc)
         return {"encodings": encodings, **ctx}
 
     def preprocess(
