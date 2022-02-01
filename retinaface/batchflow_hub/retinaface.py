@@ -17,6 +17,7 @@ class RetinaFace(ModelProcessor):
         model_source: Dict[str, str] = None,
         threshold: float_repr_style = 0.9,
         alignface=True,
+        no_detection=None,
         *args,
         **kwargs,
     ) -> None:
@@ -64,6 +65,7 @@ class RetinaFace(ModelProcessor):
         self.allow_upscaling = True
         self.threshold = threshold
         self.alignface = alignface
+        self.no_detection= no_detection
 
     def open(self):
         self.model: keras.Model = build_model()
