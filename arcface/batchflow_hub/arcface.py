@@ -115,7 +115,8 @@ class ArcFace(ModelProcessor):
 
         encodings = []
         # create empty lists
-        for i in np.unique(indexes):
+        unique_indexes = np.unique(indexes)
+        for i in range(len(unique_indexes)+1):
             encodings.append([])
         for idx,enc in zip(indexes,encodings_flat):
             encodings[idx].append(enc)
