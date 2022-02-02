@@ -120,8 +120,9 @@ class FaceNet(ModelProcessor):
             encodings_flat.extend(output)
             
         encodings = []
+        unique_indexes = np.unique(indexes)
         # create empty lists
-        for i in np.unique(indexes):
+        for i in range(len(unique_indexes)+1):
             encodings.append([])
         for idx,enc in zip(indexes,encodings_flat):
             encodings[idx].append(enc)
