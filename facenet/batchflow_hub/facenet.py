@@ -49,7 +49,6 @@ class FaceNet(ModelProcessor):
         self.model = None
         self._logger.info(f"Model Closed successfully")
 
-    @log_time
     def predict(self, image: np.asarray) -> np.asarray:
         # convert np array to tf Tensor
         image_tensor: tf.Tensor = tf.convert_to_tensor(image)
@@ -60,6 +59,8 @@ class FaceNet(ModelProcessor):
         output: np.asarray = self.model(image_tensor).numpy()
         return output
 
+
+    @log_time
     def process(self, ctx: Dict[str, Any]):
         """
         ctx signature:
@@ -78,6 +79,7 @@ class FaceNet(ModelProcessor):
             encodings.append(self.postprocess(output))
         return {"encodings": encodings, **ctx}
 
+    @log_time
     def process_batch(self, ctx: Dict[str, Any]) -> Any:
         """
         ctx signature:
