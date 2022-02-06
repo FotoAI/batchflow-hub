@@ -59,6 +59,9 @@ class FaceNet(ModelProcessor):
         output: np.asarray = self.model(image_tensor).numpy()
         return output
 
+    def postprocess(self, output):
+        return output
+
 
     @log_time
     def process(self, ctx: Dict[str, Any]):
