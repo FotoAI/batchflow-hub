@@ -50,14 +50,15 @@ class InsightFace(ModelProcessor):
             source = src["source"].lower()
             if source == "backblaze":
                 bucket_name = src["bucket_name"]
-                model_key: str = src["key"]
+                key: str = src["key"]
+                id: str = src.get("id",None)
                 filename: str = src["filename"]
                 os.makedirs(root, exist_ok=True)
                 output = os.path.join(root, filename)
                 if not os.path.isfile(output):
                     storage = get_storage("backblaze", bucket_name=bucket_name)
                     storage.authenticate()
-                    model_path = storage.download(output, id=model_key)
+                    model_path = storage.download(output, key=key, id=id)
 
     def open(self):
         self.model.prepare(ctx_id=0, det_size=(640, 640))
