@@ -10,7 +10,7 @@ from insightface.data import get_image as ins_get_image
 from batchflow.storage import get_storage
 import os
 from batchflow.constants import BATCHFLOW_HOME
-
+import onnxruntime as ort
 
 class InsightFace(ModelProcessor):
     def __init__(
@@ -38,10 +38,16 @@ class InsightFace(ModelProcessor):
             **kwargs,
         )
         self.target_size = target_size
+        if ort.get_device()=="GPU":
+            providers = ["CUDAExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"]
+
+        self._logger.info(f"Using providers : {providers}")
         self.model = FaceAnalysis(
             name=self.name,
             root=self.root,
-            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            providers=providers,
         )
 
     @staticmethod
@@ -51,7 +57,7 @@ class InsightFace(ModelProcessor):
             if source == "backblaze":
                 bucket_name = src["bucket_name"]
                 key: str = src["key"]
-                id: str = src.get("id",None)
+                id: str = src.get("id", None)
                 filename: str = src["filename"]
                 os.makedirs(root, exist_ok=True)
                 output = os.path.join(root, filename)
@@ -88,8 +94,8 @@ class InsightFace(ModelProcessor):
         encodings = []
         detections = []
         for face in faces:
-            x1, y1, x2, y2 = list(map(lambda p: max(0,int(p)) , face["bbox"]))
-            if ((x2-x1)*(y2-y1)>0):
+            x1, y1, x2, y2 = list(map(lambda p: max(0, int(p)), face["bbox"]))
+            if (x2 - x1) * (y2 - y1) > 0:
                 face_crops.append(image[y1:y2, x1:x2])
                 encodings.append(face["embedding"])
                 detections.append({"face": [x1, y1, x2, y2], "keypoints": face["kps"]})
@@ -118,11 +124,13 @@ class InsightFace(ModelProcessor):
             det = []
             faces = self.predict(image)
             for face in faces:
-                x1, y1, x2, y2 = list(map(lambda p: max(0,int(p)) , face["bbox"]))
-                if ((x2-x1)*(y2-y1)>0):
+                x1, y1, x2, y2 = list(map(lambda p: max(0, int(p)), face["bbox"]))
+                if (x2 - x1) * (y2 - y1) > 0:
                     face_crops.append(image[y1:y2, x1:x2])
                     encodings.append(face["embedding"])
-                    detections.append({"face": [x1, y1, x2, y2], "keypoints": face["kps"]})
+                    detections.append(
+                        {"face": [x1, y1, x2, y2], "keypoints": face["kps"]}
+                    )
 
             face_crops.append(fc)
             encodings.append(e)
@@ -134,4 +142,3 @@ class InsightFace(ModelProcessor):
             "detections": detections,
             **ctx,
         }
-
