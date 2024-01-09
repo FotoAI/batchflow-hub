@@ -12,6 +12,7 @@ import os
 from batchflow.constants import BATCHFLOW_HOME
 import onnxruntime as ort
 
+
 class InsightFace(ModelProcessor):
     def __init__(
         self,
@@ -38,7 +39,7 @@ class InsightFace(ModelProcessor):
             **kwargs,
         )
         self.target_size = target_size
-        if ort.get_device()=="GPU":
+        if ort.get_device() == "GPU":
             providers = ["CUDAExecutionProvider"]
         else:
             providers = ["CPUExecutionProvider"]
@@ -93,9 +94,23 @@ class InsightFace(ModelProcessor):
         face_crops = []
         encodings = []
         detections = []
+        bbox_data = []
+
         for face in faces:
             x1, y1, x2, y2 = list(map(lambda p: max(0, int(p)), face["bbox"]))
+
             if (x2 - x1) * (y2 - y1) > 0:
+                h, w = image.shape[:2]
+                area_ratio = ((x2 - x1) * (y2 - y1)) / (h * w)
+                bbox_data.append(
+                    {
+                        "x1": x1 / w,
+                        "x2": x2 / w,
+                        "y1": y1 / h,
+                        "y2": y2 / h,
+                        "area_ratio": area_ratio,
+                    }
+                )
                 face_crops.append(image[y1:y2, x1:x2])
                 encodings.append(face["embedding"])
                 detections.append({"face": [x1, y1, x2, y2], "keypoints": face["kps"]})
@@ -104,6 +119,7 @@ class InsightFace(ModelProcessor):
             "encodings": encodings,
             "face_crops": face_crops,
             "detections": detections,
+            "bbox_data": bbox_data,
             **ctx,
         }
 
