@@ -16,13 +16,13 @@ install_requires = [
     "Pillow>=5.2.0",
     "opencv-python>=3.4.4",
     "Cython>=0.29.28",
-    "insightface==0.6.2"
+    "insightface==0.6.2",
 ]
 
 setup(
     name=name,
     namespace_packages=["batchflow_hub"],
-    version="0.1",
+    version="0.2",
     description="InsightFace FaceAnalysis",
     author="Tushar Kolhe",
     author_email="tusharkolhe08@gmail.com",

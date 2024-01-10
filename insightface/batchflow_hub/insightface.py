@@ -101,7 +101,16 @@ class InsightFace(ModelProcessor):
 
             if (x2 - x1) * (y2 - y1) > 0:
                 h, w = image.shape[:2]
-                area_ratio = ((x2 - x1) * (y2 - y1)) / (h * w)
+                # area_ratio = ((x2 - x1) * (y2 - y1)) / (h * w)
+                kps = face["kps"]
+                area_ratio = 0
+                try:
+                    area_ratio = (
+                        ((kps[1][0] - kps[0][0]) ** 2 + (kps[1][1] - kps[0][1]) ** 2)
+                        ** (1 / 2)
+                    ) / (h + w)
+                except:
+                    pass
                 bbox_data.append(
                     {
                         "x1": x1 / w,
