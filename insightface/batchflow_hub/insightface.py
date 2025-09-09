@@ -63,9 +63,24 @@ class InsightFace(ModelProcessor):
                 os.makedirs(root, exist_ok=True)
                 output = os.path.join(root, filename)
                 if not os.path.isfile(output):
-                    storage = get_storage("backblaze", bucket_name=bucket_name)
-                    storage.authenticate()
-                    model_path = storage.download(output, key=key, id=id)
+                    BUCKET_NAME = os.getenv("BUCKET_NAME")
+                    B2_APPLICATION_KEY_ID = os.getenv("B2_APPLICATION_KEY_ID")
+                    B2_APPLICATION_KEY = os.getenv("B2_APPLICATION_KEY")
+                    B2_ENDPOINT_URL = os.getenv("B2_ENDPOINT_URL")
+                    storage = get_storage(
+                        "s3",
+                        bucket_name=BUCKET_NAME,
+                        endpoint_url=B2_ENDPOINT_URL,
+                        aws_access_key_id=B2_APPLICATION_KEY_ID,
+                        aws_secret_access_key=B2_APPLICATION_KEY,
+                        force=True,
+                    )
+                    # storage = get_storage("backblaze", bucket_name=bucket_name)
+                    # storage.authenticate()
+                    model_path = storage.download(
+                        output=output,
+                        key=key,
+                    )
 
     def open(self):
         self.model.prepare(ctx_id=0, det_size=(640, 640))
