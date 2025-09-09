@@ -22,7 +22,7 @@ install_requires = [
 setup(
     name=name,
     namespace_packages=["batchflow_hub"],
-    version="0.2",
+    version="0.3",
     description="InsightFace FaceAnalysis",
     author="Tushar Kolhe",
     author_email="tusharkolhe08@gmail.com",
