@@ -133,11 +133,8 @@ class InspireFace(ModelProcessor):
             return 0
         option_names = [
             "HF_ENABLE_QUALITY",
-            "HF_ENABLE_INTERACTION",
-            "HF_ENABLE_FACE_POSE",
             "HF_ENABLE_FACE_ATTRIBUTE",
             "HF_ENABLE_FACE_EMOTION",
-            "HF_ENABLE_RECOGNITION",
         ]
         opt = 0
         for name in option_names:
@@ -150,9 +147,7 @@ class InspireFace(ModelProcessor):
         option_names = [
             "HF_ENABLE_QUALITY",
             "HF_ENABLE_FACE_ATTRIBUTE",
-            "HF_ENABLE_INTERACTION",
             "HF_ENABLE_FACE_EMOTION",
-            "HF_ENABLE_RECOGNITION",
         ]
         opt = 0
         for name in option_names:
@@ -289,7 +284,6 @@ class InspireFace(ModelProcessor):
             embedding = self._extract_embedding(face_extensions, idx)
             encodings.append(embedding)
             blur_score = self._calculate_blur(crop)
-
             bbox_entry = {
                 "x1": x1 / max(width, 1),
                 "x2": x2 / max(width, 1),
@@ -298,12 +292,11 @@ class InspireFace(ModelProcessor):
                 "area_ratio": ((x2 - x1) * (y2 - y1)) / max(width * height, 1),
             }
             bbox_data.append(bbox_entry)
-
             detection_entry = self._build_detection_entry(
                 face,
                 face_extensions,
                 idx,
-                [x1, y1, x2, y2],
+                bbox_entry,
                 embedding,
                 blur_score,
             )
