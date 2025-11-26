@@ -79,10 +79,10 @@ class InspireFace(ModelProcessor):
         name: str = "Megatron",
         model_source: Optional[Dict[str, str]] = None,
         target_size: Tuple[int, int] = (160, 160),
-        session_opt: Optional[int] = None,
-        pipeline_opt: Optional[int] = None,
+        session_opt: Optional[List[str]] = None,
+        pipeline_opt: Optional[List[str]] = None,
         max_faces: int = 50,
-        detect_mode: Optional[int] = None,
+        detect_mode: Optional[str] = None,
         detect_pixel_level: int = -1,
         confidence_threshold: float = 0.4,
         debug: bool = False,
@@ -104,12 +104,17 @@ class InspireFace(ModelProcessor):
         self.target_size = target_size
         self.max_faces = max_faces
         self.detect_pixel_level = detect_pixel_level
-        self.detect_mode = (
-            detect_mode or getattr(isf, "HF_DETECT_MODE_ALWAYS_DETECT", 0)
+        self.detect_mode = self._convert_opt_to_int(
+            detect_mode or "HF_DETECT_MODE_ALWAYS_DETECT"
         )
         self.confidence_threshold = confidence_threshold
-        self.session_opt = session_opt or self._compute_default_session_opt()
-        self.pipeline_opt = pipeline_opt or self._compute_default_pipeline_opt()
+        default_opt_names = [
+            "HF_ENABLE_QUALITY",
+            "HF_ENABLE_FACE_ATTRIBUTE",
+            "HF_ENABLE_FACE_EMOTION",
+        ]
+        self.session_opt = self._convert_opt_list_to_int(session_opt or default_opt_names)
+        self.pipeline_opt = self._convert_opt_list_to_int(pipeline_opt or default_opt_names)
         self.debug = debug
         self.debug_dir = Path(debug_root)
         self.debug_crops_dir = self.debug_dir / "crops"
@@ -128,29 +133,16 @@ class InspireFace(ModelProcessor):
         self.debug_crops_dir.mkdir(parents=True, exist_ok=True)
         self.debug_annotated_dir.mkdir(parents=True, exist_ok=True)
 
-    def _compute_default_session_opt(self) -> int:
+    def _convert_opt_to_int(self, opt_name: str) -> int:
         if isf is None:
             return 0
-        option_names = [
-            "HF_ENABLE_QUALITY",
-            "HF_ENABLE_FACE_ATTRIBUTE",
-            "HF_ENABLE_FACE_EMOTION",
-        ]
-        opt = 0
-        for name in option_names:
-            opt |= getattr(isf, name, 0)
-        return opt
+        return getattr(isf, opt_name, 0)
 
-    def _compute_default_pipeline_opt(self) -> int:
+    def _convert_opt_list_to_int(self, opt_names: List[str]) -> int:
         if isf is None:
             return 0
-        option_names = [
-            "HF_ENABLE_QUALITY",
-            "HF_ENABLE_FACE_ATTRIBUTE",
-            "HF_ENABLE_FACE_EMOTION",
-        ]
         opt = 0
-        for name in option_names:
+        for name in opt_names:
             opt |= getattr(isf, name, 0)
         return opt
 
@@ -217,46 +209,32 @@ class InspireFace(ModelProcessor):
     def process(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
         image: Optional[np.ndarray] = ctx.get("image")
         (
-            face_crops,
             encodings,
             detections,
-            bbox_data,
         ) = self._run_session_on_image(image)
 
         return {
             "encodings": encodings,
-            "face_crops": face_crops,
             "detections": detections,
-            "bbox_data": bbox_data,
             **ctx,
         }
 
     @log_time
     def process_batch(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
         images: Sequence[np.ndarray] = ctx.get("image") or []
-        filenames: Sequence[Optional[str]] = ctx.get("filename") or []
-        batched_crops: List[List[np.ndarray]] = []
         batched_encodings: List[List[Optional[np.ndarray]]] = []
         batched_detections: List[List[Dict[str, Any]]] = []
-        batched_bbox_data: List[List[Dict[str, float]]] = []
 
         for image in images:
             (
-                face_crops,
                 encodings,
                 detections,
-                bbox_data,
             ) = self._run_session_on_image(image)
-            batched_crops.append(face_crops)
             batched_encodings.append(encodings)
             batched_detections.append(detections)
-            batched_bbox_data.append(bbox_data)
-
         return {
             "encodings": batched_encodings,
-            "face_crops": batched_crops,
             "detections": batched_detections,
-            "bbox_data": batched_bbox_data,
             **ctx,
         }
 
@@ -267,10 +245,8 @@ class InspireFace(ModelProcessor):
             raise ValueError("Missing 'image' in context.")
 
         faces, face_extensions, image_bgr = self.predict(image)
-        face_crops: List[np.ndarray] = []
         encodings: List[Optional[np.ndarray]] = []
         detections: List[Dict[str, Any]] = []
-        bbox_data: List[Dict[str, float]] = []
 
         height, width = image.shape[:2]
 
@@ -279,29 +255,30 @@ class InspireFace(ModelProcessor):
             if (x2 - x1) * (y2 - y1) <= 0:
                 continue
 
-            crop = image[y1:y2, x1:x2]
-            face_crops.append(crop)
-            embedding = self._extract_embedding(face_extensions, idx)
-            encodings.append(embedding)
-            blur_score = self._calculate_blur(crop)
+            # crop = image[y1:y2, x1:x2]
+            # face_crops.append(crop)
+            if self.session_opt & isf.HF_ENABLE_FACE_RECOGNITION:
+                encoding = self._extract_embedding(image, face)
+                encodings.append(encoding)
+            
+            # blur_score = self._calculate_blur(crop)
             bbox_entry = {
                 "x1": x1 / max(width, 1),
                 "x2": x2 / max(width, 1),
                 "y1": y1 / max(height, 1),
                 "y2": y2 / max(height, 1),
                 "area_ratio": ((x2 - x1) * (y2 - y1)) / max(width * height, 1),
+                "height": height,
+                "width": width,
             }
-            bbox_data.append(bbox_entry)
             detection_entry = self._build_detection_entry(
                 face,
                 face_extensions,
-                idx,
                 bbox_entry,
-                embedding,
-                blur_score,
+                idx
             )
             detections.append(detection_entry)
-        return face_crops, encodings, detections, bbox_data
+        return encodings, detections
 
     def _clip_box(
         self, location: Sequence[int], width: int, height: int
@@ -314,75 +291,30 @@ class InspireFace(ModelProcessor):
         return x1, y1, x2, y2
 
     def _extract_embedding(
-        self, extensions: List[Any], index: int
+        self, image: np.ndarray, face: Any
     ) -> Optional[np.ndarray]:
-        if not extensions or index >= len(extensions):
-            return None
-        extension = extensions[index]
-        candidate_attrs = ("embedding", "feature", "face_feature")
-        vector = None
-        for attr in candidate_attrs:
-            vector = getattr(extension, attr, None)
-            if vector is not None:
-                break
-        if vector is None:
-            return None
-        arr = np.asarray(vector, dtype=np.float32)
-        return arr.reshape(-1)
-
-    def _extract_keypoints(self, face: Any) -> Dict[str, Tuple[float, float]]:
-        candidate_attrs = (
-            "dense_landmark",
-            "landmark",
-            "key_points",
-            "keypoints",
-            "kps",
-        )
-        keypoints = None
-        for attr in candidate_attrs:
-            keypoints = getattr(face, attr, None)
-            if keypoints is not None:
-                break
-        if keypoints is None:
-            return {}
-        normalized = {}
-        if isinstance(keypoints, dict):
-            for key, value in keypoints.items():
-                if isinstance(value, (tuple, list, np.ndarray)) and len(value) == 2:
-                    normalized[key] = (float(value[0]), float(value[1]))
-        else:
-            for idx, value in enumerate(keypoints):
-                if isinstance(value, (tuple, list, np.ndarray)) and len(value) == 2:
-                    normalized[f"p{idx}"] = (float(value[0]), float(value[1]))
-        return normalized
+        embeddings = self._session.face_feature_extract(image, face)
+        embeddings = embeddings.reshape(-1)
+        return np.asarray(embeddings, dtype=np.float32)
 
     def _build_detection_entry(
         self,
         face: Any,
         extensions: List[Any],
-        index: int,
         bbox: List[int],
-        embedding: Optional[np.ndarray],
-        blur_score: Optional[float],
+        index: int,
     ) -> Dict[str, Any]:
         extension = extensions[index] if index < len(extensions) else None
         conf = getattr(face, "detection_confidence", None)
         roll = getattr(face, "roll", None)
         yaw = getattr(face, "yaw", None)
         pitch = getattr(face, "pitch", None)
-        quality = getattr(extension, "quality_confidence", None) if extension else None
         attributes = self._extract_attributes(extension)
         detection_entry: Dict[str, Any] = {
             "bbox": bbox,
-            "keypoints": self._extract_keypoints(face),
             "confidence": conf,
             "pose": {"pitch": pitch, "yaw": yaw, "roll": roll},
-            "quality": quality,
-            "blur": blur_score,
-            "race": attributes.get("race"),
-            "gender": attributes.get("gender"),
-            "age": attributes.get("age"),
-            "emotion": attributes.get("emotion"),
+            **attributes,
         }
         return detection_entry
 
@@ -394,24 +326,38 @@ class InspireFace(ModelProcessor):
         label = tags.get(idx, "Unknown")
         return {"index": int(idx), "label": label}
 
+
     def _extract_attributes(self, extension: Optional[Any]) -> Dict[str, Any]:
         if extension is None:
             return {}
-        race_idx = getattr(extension, "race", 0)
-        gender_idx = getattr(extension, "gender", 0)
-        age_idx = getattr(extension, "age_bracket", 0)
-        emotion_idx = getattr(extension, "emotion", 0)
-        return {
-            "race": self._build_categorical_attribute(race_idx, self.race_tags),
-            "gender": self._build_categorical_attribute(gender_idx, self.gender_tags),
-            "age": self._build_categorical_attribute(
-                age_idx, self.age_bracket_tags
-            ),
-            "emotion": self._build_categorical_attribute(
-                emotion_idx, self.emotion_tags
-            ),
-            "interaction": getattr(extension, "interaction", None),
-        }
+        attributes = {}
+        if self.session_opt & isf.HF_ENABLE_QUALITY:
+            quality = getattr(extension, "quality_confidence", None)
+            attributes["quality"] = quality
+        if self.session_opt & isf.HF_ENABLE_FACE_ATTRIBUTE:
+            race_idx = getattr(extension, "race", 0)
+            gender_idx = getattr(extension, "gender", 0)
+            age_idx = getattr(extension, "age_bracket", 0)
+            emotion_idx = getattr(extension, "emotion", 0)
+            attributes["race"] = self._build_categorical_attribute(race_idx, self.race_tags)
+            attributes["gender"] = self._build_categorical_attribute(gender_idx, self.gender_tags)
+            attributes["age"] = self._build_categorical_attribute(age_idx, self.age_bracket_tags)
+        if self.session_opt & isf.HF_ENABLE_FACE_EMOTION:
+            emotion_idx = getattr(extension, "emotion", 0)
+            attributes["emotion"] = self._build_categorical_attribute(emotion_idx, self.emotion_tags)
+        if self.session_opt & isf.HF_ENABLE_LIVENESS:
+            liveness_score = getattr(extension, "rgb_liveness_confidence", None)
+            attributes["liveness_score"] = liveness_score
+        if self.session_opt & isf.HF_ENABLE_INTERACTION:
+            left_eye_open_confidence = getattr(extension, "left_eye_status_confidence", None)
+            right_eye_status_confidence = getattr(extension, "right_eye_status_confidence", None)
+            attributes["left_eye_open_confidence"] = left_eye_open_confidence
+            attributes["right_eye_status_confidence"] = right_eye_status_confidence
+        if self.session_opt & isf.HF_ENABLE_LIVENESS:
+            liveness_score = getattr(extension, "rgb_liveness_confidence", None)
+            attributes["liveness_score"] = liveness_score
+        
+        return attributes
 
     def _calculate_blur(self, crop: Optional[np.ndarray]) -> Optional[float]:
         if crop is None or crop.size == 0:
