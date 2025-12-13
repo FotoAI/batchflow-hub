@@ -112,6 +112,7 @@ class InspireFace(ModelProcessor):
             "HF_ENABLE_QUALITY",
             "HF_ENABLE_FACE_ATTRIBUTE",
             "HF_ENABLE_FACE_EMOTION",
+             "HF_ENABLE_INTERACTION"
         ]
         self.session_opt = self._convert_opt_list_to_int(session_opt or default_opt_names)
         self.pipeline_opt = self._convert_opt_list_to_int(pipeline_opt or default_opt_names)
