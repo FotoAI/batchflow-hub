@@ -33,7 +33,7 @@ class InsightFace(ModelProcessor):
                 model_source, root=os.path.join(self.root, "models", self.name)
             )
         super().__init__(
-            model_path=os.path.join(BATCHFLOW_HOME, "models", self.name),
+            model_path=os.path.join(self.root, "models", self.name),
             model_source=model_source,
             *args,
             **kwargs,

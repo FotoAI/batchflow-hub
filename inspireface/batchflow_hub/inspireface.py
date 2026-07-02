@@ -158,7 +158,7 @@ class InspireFace(ModelProcessor):
         self._logger.info(
             "Launching InspireFace resources for model pack '%s'...", self.name
         )
-        launch_status = isf.reload(self.name)
+        launch_status = isf.reload(self.name, resource_path=self.model_path)
         if not launch_status:
             raise RuntimeError(
                 f"Failed to launch InspireFace resources for pack '{self.name}'."
