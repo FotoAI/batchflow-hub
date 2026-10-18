@@ -73,6 +73,10 @@ DEFAULT_EMOTION_TAGS = {
 
 
 class InspireFace(ModelProcessor):
+    # Callers can check this before sending {"image": bgr_array, "is_bgr": True}.
+    # An older release ignores the flag and would read the array as RGB.
+    supports_bgr_input = True
+
     def __init__(
         self,
         root: Optional[str] = None,
@@ -183,7 +187,7 @@ class InspireFace(ModelProcessor):
         self._logger.info("InspireFace session closed")
 
     def predict(
-        self, image: np.ndarray
+        self, image: np.ndarray, is_bgr: bool = False
     ) -> Tuple[List[Any], List[Any], Optional[np.ndarray]]:
         if self._session is None:
             raise RuntimeError("InspireFaceSession is not initialized. Call open().")
@@ -194,7 +198,8 @@ class InspireFace(ModelProcessor):
         if image.ndim != 3 or image.shape[2] != 3:
             raise ValueError("Expected an RGB image with shape (H, W, 3).")
 
-        image_bgr = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        # A caller that already holds BGR (is_bgr=True) avoids a second full frame.
+        image_bgr = image if is_bgr else cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         faces = self._session.face_detection(image_bgr)
         face_extensions: List[Any] = []
         if faces:
@@ -208,11 +213,16 @@ class InspireFace(ModelProcessor):
 
     @log_time
     def process(self, ctx: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        ctx signature:
+            image (np.ndarray): Image, RGB unless is_bgr is set
+            is_bgr (bool, optional): the image is already BGR. Default False.
+        """
         image: Optional[np.ndarray] = ctx.get("image")
         (
             encodings,
             detections,
-        ) = self._run_session_on_image(image)
+        ) = self._run_session_on_image(image, is_bgr=bool(ctx.get("is_bgr", False)))
 
         return {
             "encodings": encodings,
@@ -240,16 +250,22 @@ class InspireFace(ModelProcessor):
         }
 
     def _run_session_on_image(
-        self, image: Optional[np.ndarray]
+        self, image: Optional[np.ndarray], is_bgr: bool = False
     ) -> Tuple[List[np.ndarray], List[Optional[np.ndarray]], List[Dict[str, Any]], List[Dict[str, float]]]:
         if image is None:
             raise ValueError("Missing 'image' in context.")
 
-        faces, face_extensions, image_bgr = self.predict(image)
+        faces, face_extensions, image_bgr = self.predict(image, is_bgr=is_bgr)
         encodings: List[Optional[np.ndarray]] = []
         detections: List[Dict[str, Any]] = []
 
         height, width = image.shape[:2]
+
+        # Feature extraction has always been given the RGB array. Keep that for BGR
+        # callers so embeddings do not depend on the input channel order.
+        embedding_source = image
+        if is_bgr and self.session_opt & isf.HF_ENABLE_FACE_RECOGNITION:
+            embedding_source = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
         for idx, face in enumerate(faces):
             x1, y1, x2, y2 = self._clip_box(face.location, width, height)
@@ -259,7 +275,7 @@ class InspireFace(ModelProcessor):
             # crop = image[y1:y2, x1:x2]
             # face_crops.append(crop)
             if self.session_opt & isf.HF_ENABLE_FACE_RECOGNITION:
-                encoding = self._extract_embedding(image, face)
+                encoding = self._extract_embedding(embedding_source, face)
                 encodings.append(encoding)
             
             # blur_score = self._calculate_blur(crop)

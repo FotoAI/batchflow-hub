@@ -14,6 +14,10 @@ import onnxruntime as ort
 
 
 class InsightFace(ModelProcessor):
+    # Callers can check this before sending {"image": bgr_array, "is_bgr": True}.
+    # An older release ignores the flag and would read the array as RGB.
+    supports_bgr_input = True
+
     def __init__(
         self,
         root: str = None,
@@ -93,19 +97,24 @@ class InsightFace(ModelProcessor):
     def postprocess(self, output):
         return output
 
-    def predict(self, image: np.asarray):
-        # rgb to bgr
-        image = image[..., ::-1]
+    def predict(self, image: np.asarray, is_bgr: bool = False):
+        # insightface wants BGR. `image[..., ::-1]` is a view, but cv2.resize on that
+        # reversed view makes a full extra frame, so callers that already hold BGR
+        # (is_bgr=True) skip it. The default stays RGB input.
+        if not is_bgr:
+            image = image[..., ::-1]
         return self.model.get(image)
 
     @log_time
     def process(self, ctx: Dict[str, Any]):
         """
         ctx signature:
-            image (np.asarray): Image
+            image (np.asarray): Image, RGB unless is_bgr is set
+            is_bgr (bool, optional): the image is already BGR. Default False.
+                Face crops are views of the image, so they keep its channel order.
         """
         image: np.asarray = ctx.get("image")
-        faces = self.predict(image)
+        faces = self.predict(image, is_bgr=bool(ctx.get("is_bgr", False)))
         face_crops = []
         encodings = []
         detections = []
