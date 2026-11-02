@@ -105,6 +105,27 @@ class InsightFace(ModelProcessor):
             image = image[..., ::-1]
         return self.model.get(image)
 
+    def _sweep_rotations(self, image: np.ndarray, is_bgr: bool):
+        """Return (faces, used_image, applied_rotation_degrees).
+
+        Runs ``predict`` at 0°; if any face is detected, returns the input image
+        untouched. Otherwise rotates with ``np.rot90(image, k)`` for k in (1, 2, 3)
+        and returns the first non-empty rotation together with the rotated frame
+        and ``90*k``. If every rotation is empty returns ``([], image, 0)``.
+
+        ``np.rot90`` preserves channel order, so ``is_bgr`` stays correct for the
+        rotated copies.
+        """
+        faces = self.predict(image, is_bgr=is_bgr)
+        if len(faces) > 0:
+            return faces, image, 0
+        for k in (1, 2, 3):
+            rotated = np.ascontiguousarray(np.rot90(image, k))
+            faces = self.predict(rotated, is_bgr=is_bgr)
+            if len(faces) > 0:
+                return faces, rotated, 90 * k
+        return [], image, 0
+
     @log_time
     def process(self, ctx: Dict[str, Any]):
         """
@@ -112,9 +133,20 @@ class InsightFace(ModelProcessor):
             image (np.asarray): Image, RGB unless is_bgr is set
             is_bgr (bool, optional): the image is already BGR. Default False.
                 Face crops are views of the image, so they keep its channel order.
+            rotation_sweep (bool, optional): when True and no face is detected at 0°,
+                re-run predict on 90°/180°/270° copies and keep the first non-empty
+                result. Coordinates (bbox_data, face crops, detections) are reported
+                against the chosen rotated frame; ``applied_rotation`` records the
+                degrees. Default False (byte-for-byte identical to the stock path).
         """
         image: np.asarray = ctx.get("image")
-        faces = self.predict(image, is_bgr=bool(ctx.get("is_bgr", False)))
+        is_bgr = bool(ctx.get("is_bgr", False))
+        rotation_sweep = bool(ctx.get("rotation_sweep", False))
+        if rotation_sweep:
+            faces, image, applied_rotation = self._sweep_rotations(image, is_bgr)
+        else:
+            faces = self.predict(image, is_bgr=is_bgr)
+            applied_rotation = 0
         face_crops = []
         encodings = []
         detections = []
@@ -149,11 +181,13 @@ class InsightFace(ModelProcessor):
                 detections.append({"face": [x1, y1, x2, y2], "keypoints": face["kps"]})
 
         return {
+            **ctx,
             "encodings": encodings,
             "face_crops": face_crops,
             "detections": detections,
             "bbox_data": bbox_data,
-            **ctx,
+            "image": image,
+            "applied_rotation": int(applied_rotation),
         }
 
     @log_time
@@ -161,6 +195,9 @@ class InsightFace(ModelProcessor):
         """
         ctx signature:
             image (List[np.asarray]): Image
+
+        Note: batch mode does not implement ``rotation_sweep``; the flag is
+        silently ignored here.
         """
         images = ctx.get("image")
         face_crops = []
